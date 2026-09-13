@@ -2,10 +2,20 @@ function colorTable(range, mapName, isShroom, rankCache) {
   const values = range.getDisplayValues();
   const backgrounds = range.getBackgrounds();
   const richValues = range.getRichTextValues();
+  const mapNames = Array.isArray(mapName)
+    ? mapName
+    : Array(values.length).fill(mapName);
+  const shroomFlags = Array.isArray(isShroom)
+    ? isShroom
+    : Array(values.length).fill(isShroom);
 
   const colors = ["#FFE599", "#D9D9D9", "#F9CB9C"]; // top 1 / 2 / 3
 
   for (let r = 0; r < values.length; r++) {
+    const currentMapName = mapNames[r];
+    const currentIsShroom = shroomFlags[r];
+    if (!currentMapName || currentIsShroom === null || currentIsShroom === undefined) continue;
+
     const parsed = values[r]
       .map((v, c) => {
         const time = typeof v === "string" ? v.split("\n")[0].trim() : v;
@@ -29,13 +39,13 @@ function colorTable(range, mapName, isShroom, rankCache) {
         backgrounds[r][o.col] = "#FFFFFF";
       }
 
-      if (mapName === "Total") {
+      if (currentMapName === "Total") {
         richValues[r][o.col] = makePlainRichText(o.text);
         return;
       }
 
       // ---------- Rank depuis la table Ranks ----------
-      const rankInfo = getRank(rankCache, mapName, o.text, isShroom);
+      const rankInfo = getRank(rankCache, currentMapName, o.text, currentIsShroom);
       const rankName = rankInfo ? rankInfo.rank : "Unranked";
 
       richValues[r][o.col] = buildTimeRankRichText(o.text, rankName);
@@ -47,7 +57,10 @@ function colorTable(range, mapName, isShroom, rankCache) {
 }
 
 function colorSelectedTable() {
+  clearAllCaches();
   const range = SpreadsheetApp.getActive().getActiveRange();
+  if (!range) return;
+
   const sheet = range.getSheet();
 
   const values = range.getDisplayValues();
@@ -58,6 +71,8 @@ function colorSelectedTable() {
 
   const rankCache = buildRankCache();
 
+  const mapNames = Array(numRows).fill("");
+  const shroomFlags = Array(numRows).fill(null);
   let currentType = null;
 
   for (let r = 0; r < numRows; r++) {
@@ -73,15 +88,10 @@ function colorSelectedTable() {
 
     if (!mapName || !currentType) continue;
 
-    const isShroom = currentType === "Shroom";
-
-    const timeRange = sheet.getRange(
-      startRow + r,
-      startCol + 1,
-      1,
-      numCols - 2
-    );
-
-    colorTable(timeRange, mapName, isShroom, rankCache);
+    mapNames[r] = mapName;
+    shroomFlags[r] = currentType === "Shroom";
   }
+
+  const timeRange = sheet.getRange(startRow, startCol + 1, numRows, numCols - 2);
+  colorTable(timeRange, mapNames, shroomFlags, rankCache);
 }

@@ -1,62 +1,126 @@
+// Kept for compatibility with the former custom-menu entry.
 function TracksMarkdown() {
-  const html = HtmlService.createHtmlOutputFromFile("TracksMarkdownPopup")
-    .setWidth(300)
-    .setHeight(500);
-  SpreadsheetApp.getUi().showModalDialog(html, "Sélectionner les courses");
+  CreateTable();
 }
 
-function CreateTracksMarkdown(selectedIndices, selectedNita) {
+function CreateTracksMarkdown(selection, selectedNita, tableInfo) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Archives");
-  
-  const headers = sheet.getRange("D1:M1").getDisplayValues()[0];
-  const dataShrooms = sheet.getRange("B2:M31").getDisplayValues();
-  const dataNita = sheet.getRange("B33:M62").getDisplayValues();
+  const maps = getMaps();
+  const players = getPlayers();
+  const normalizedSelection = normalizeMarkdownSelection_(selection, selectedNita, maps);
+  const header = getMarkdownHeaderInfo_(tableInfo);
 
-  const shrooms = selectedIndices.filter(i => !selectedNita.includes(i));
-  const nita = selectedIndices.filter(i => selectedNita.includes(i));
+  if (normalizedSelection.length === 0) {
+    throw new Error("Select at least one track to generate Markdown.");
+  }
+
+  const headers = players.length
+    ? sheet.getRange(1, 4, 1, players.length).getDisplayValues()[0]
+    : [];
+  const dataWidth = players.length + 2;
+  const dataShrooms = sheet.getRange(2, 2, maps.length, dataWidth).getDisplayValues();
+  const dataNita = sheet
+    .getRange(maps.length + 3, 2, maps.length, dataWidth)
+    .getDisplayValues();
+
+  const shrooms = normalizedSelection.filter(item => !item.nita);
+  const nita = normalizedSelection.filter(item => item.nita);
 
   function formatLigne(row) {
-    const cours = row[0];
-    const moyenne = row[1];
+    const cours = row[0] || "";
+    const moyenne = String(row[1] || "-").split("\n")[0].trim();
     const temps = row.slice(2);
 
     let bestMs = Infinity;
     let bestTime = "";
     let bestJoueur = "";
-    let count = 0;
-    const total = temps.length;
 
-    temps.forEach((t, i) => {
-      const clean = t.split("\n")[0].trim();
+    temps.forEach((time, index) => {
+      const clean = String(time || "").split("\n")[0].trim();
       if (!clean || clean === "-") return;
-      count++;
-      const ms = TIME_TO_MS(clean);
-      if (ms !== null && ms < bestMs) {
-        bestMs = ms;
+
+      const milliseconds = TIME_TO_MS(clean);
+      if (milliseconds !== null && milliseconds < bestMs) {
+        bestMs = milliseconds;
         bestTime = clean;
-        bestJoueur = headers[i];
+        bestJoueur = headers[index] || "";
       }
     });
 
-    const precision = `${count}/${total}`;
-    return `> [${cours}]  [${precision}]\nMoyenne : ${moyenne.split("\n")[0].trim()}\nMeilleur : ${bestTime} (${bestJoueur})\n`;
+    return `> [${cours}]\nAverage : ${moyenne}\nBest : ${bestTime} (${bestJoueur})\n`;
   }
 
-  let texte = `\`\`\`Gros TT n°XX - XX/XX/XXXX\`\`\`\n`;
+  let text = `\`\`\`Gros TT n°${header.number} - ${header.date}\`\`\`\n`;
+  text += "## Shrooms\n```\n";
 
-  texte += `## Shrooms\n\`\`\`\n`;
-  shrooms.forEach(i => {
-    texte += formatLigne(dataShrooms[i]) + "\n";
+  shrooms.forEach(item => {
+    text += formatLigne(dataShrooms[item.index]) + "\n";
   });
-  texte += `\`\`\`\n`;
+
+  text += "```";
 
   if (nita.length > 0) {
-    texte += `## NITA\n\`\`\`\n`;
-    nita.forEach(i => {
-      texte += formatLigne(dataNita[i]) + "\n";
+    text += "\n## NITA\n```\n";
+    nita.forEach(item => {
+      text += formatLigne(dataNita[item.index]) + "\n";
     });
-    texte += `\`\`\``;
+    text += "```";
   }
 
-  return texte;
+  return text;
+}
+
+function getMarkdownHeaderInfo_(tableInfo) {
+  if (tableInfo && tableInfo.number && tableInfo.date) {
+    return {
+      number: String(tableInfo.number),
+      date: String(tableInfo.date)
+    };
+  }
+
+  const activeTable = getActiveTableSelection();
+  if (activeTable.found) {
+    return {
+      number: activeTable.tableNumber,
+      date: activeTable.tableDate
+    };
+  }
+
+  return getNextTableHeaderInfo_();
+}
+
+function normalizeMarkdownSelection_(selection, selectedNita, maps) {
+  if (!Array.isArray(selection)) return [];
+
+  const legacyNita = new Set(Array.isArray(selectedNita) ? selectedNita : []);
+  const seen = new Set();
+
+  return selection.map((item, position) => {
+    const isLegacyIndex = typeof item === "number" || typeof item === "string" && /^\d+$/.test(item);
+    const numericIndex = isLegacyIndex ? Number(item) : -1;
+    const map = isLegacyIndex
+      ? maps[numericIndex]
+      : item && item.map !== undefined
+        ? normalizeMapId_(item.map)
+        : "";
+    const index = maps.indexOf(map);
+
+    if (index === -1 || seen.has(map)) return null;
+
+    const requestedType = item && typeof item === "object"
+      ? String(item.type || item.format || "")
+      : "";
+    const nita = item && typeof item === "object" && item.nita !== undefined
+      ? Boolean(item.nita)
+      : requestedType === "NI" || legacyNita.has(numericIndex);
+
+    seen.add(map);
+    return {
+      map,
+      index,
+      type: nita ? "NI" : requestedType === "NI" ? "NI" : "Shroom",
+      nita,
+      position
+    };
+  }).filter(Boolean);
 }

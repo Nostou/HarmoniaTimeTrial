@@ -1,14 +1,10 @@
-function daysBetween(dateString) {
-  const recordDate = new Date(dateString);
-  const today = new Date();
-  const diff = today - recordDate;
-  return Math.floor(diff / (1000 * 60 * 60 * 24));
-}
-
 function stripHtml(str) {
   if (!str) return "";
   return str
     .replace(/<[^>]+>/g, "")
+    .replace(/&(apos|rsquo|#0*39|#x27);/gi, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/&amp;/gi, "&")
     .replace(/&nbsp;/g, " ")
     .trim();
 }
@@ -60,16 +56,15 @@ function fetchShroomWR() {
     if (!row.includes("display.php?track=")) return;
 
     const tds = row.match(/<td[\s\S]*?<\/td>/g);
-    if (!tds || tds.length < 5) return;
+    if (!tds || tds.length < 3) return;
 
     const map = stripHtml(tds[0]);
     const time = formatShroomTime(stripHtml(tds[1]));
     const player = stripHtml(tds[2]);
-    const date = stripHtml(tds[4]);
 
-    if (!map || !time || !player || !date) return;
+    if (!map || !time || !player) return;
 
-    records.push({map, time, player, days: daysBetween(date)});
+    records.push({map, time, player});
   });
 
   return records;
@@ -87,7 +82,6 @@ function fetchNIWR() {
     if (!rawMap || typeof rawMap !== "string") continue;
 
     const map = normalizeNIMapName(rawMap);
-    
     const wrRow = row + 1;
     if (!data[wrRow]) continue;
 
@@ -97,47 +91,31 @@ function fetchNIWR() {
     if (!timeRaw || !player) continue;
 
     const timeClean = normalizeWRTime(timeRaw.toString());
-    records.push({map: normalizeNIMapName(rawMap), time: timeClean, player: player.toString().trim(), days: null});
+    records.push({map, time: timeClean, player: player.toString().trim()});
   }
 
   return records;
 }
 
-/*function formatCell(record) {
-  if (!record) return "";
-
-  if (record.days === null) {
-    return `${record.time}\n${record.player}`;
-  }
-
-  return `${record.time}\n${record.player} - ${record.days}d`;
-}*/
-
-function formatWR(records, expectedCount) {
-  const values = [];
-
-  for (let i = 0; i < expectedCount; i++) {
-    const r = records[i];
-    values.push([r.time]);
-  }
-
-  return values;
+function normalizeRankMapName(raw) {
+  return String(raw || "")
+    .toLowerCase()
+    .replace(/[’']/g, "")
+    .replace(/^snes\s+/, "")
+    .replace(/[^a-z0-9]+/g, "");
 }
 
-function logRecords(title, records, withDays) {
-  Logger.log("=== %s ===", title);
+function formatWR(records, mapDefinitions) {
+  const timesByMap = new Map();
 
-  Object.keys(records)
-    .forEach(map => {
-      const r = records[map];
-      if (withDays) {
-        Logger.log("%s | %s | %s | %s days", map, r.time, r.player, r.days);
-      } else {
-        Logger.log("%s | %s | %s", map, r.time, r.player);
-      }
-    });
+  records.forEach(record => {
+    const key = normalizeRankMapName(record.map);
+    if (key && !timesByMap.has(key)) timesByMap.set(key, record.time || "-");
+  });
 
-  Logger.log("=== END %s ===", title);
+  return mapDefinitions.map(map => [
+    timesByMap.get(normalizeRankMapName(map.name)) || "-"
+  ]);
 }
 
 function fillRankTargets() {
@@ -180,32 +158,40 @@ function fillRankTargets() {
   sheet
     .getRange(2, 4, output.length, output[0].length)
     .setValues(output);
+
+  const rankPalette = sheet.getRange(2, 4, 1, rankHeaders.length).getBackgrounds()[0];
+  const mapBackgrounds = Array.from({ length: maps.length }, () => rankPalette.slice());
+  sheet
+    .getRange(2, 4, maps.length, rankHeaders.length)
+    .setBackgrounds(mapBackgrounds);
+  sheet
+    .getRange(maps.length + 3, 4, maps.length, rankHeaders.length)
+    .setBackgrounds(mapBackgrounds);
 }
 
 function refreshRanks() {
   //if (!assertOwnerOnly()) return;
 
+  clearAllCaches();
   initMaps("Ranks");
 
   const ranks = getSheet("Ranks");
-  const maps = getMaps();
+  const mapDefinitions = getMapDefinitions();
+  const maps = mapDefinitions.map(map => map.id);
 
   const shroomWR = fetchShroomWR();
   const niWR = fetchNIWR();
-
-  //logRecords("SHROOM WR", shroomWR, true);
-  //logRecords("NI WR", niWR, false);
 
   const shroomStart = 2;
   const niStart = maps.length + 3;
 
   ranks
     .getRange(shroomStart, 3, maps.length, 1)
-    .setValues(formatWR(shroomWR, maps.length));
+    .setValues(formatWR(shroomWR, mapDefinitions));
 
   ranks
     .getRange(niStart, 3, maps.length, 1)
-    .setValues(formatWR(niWR, maps.length));
+    .setValues(formatWR(niWR, mapDefinitions));
 
   fillRankTargets();
 }

@@ -4,12 +4,12 @@
 
 function initMaps(sheetName) {
   const sheet = getSheet(sheetName);  
-  const maps = getMaps();
+  const mapLabels = getMapDefinitions().map(map => map.label);
 
   let output = [[""]];
-  maps.forEach(m => output.push([m]));
+  mapLabels.forEach(label => output.push([label]));
   output.push([""]);
-  maps.forEach(m => output.push([m]));
+  mapLabels.forEach(label => output.push([label]));
 
   sheet.getRange(1, 2, output.length, 1).setValues(output);
 }
@@ -80,39 +80,30 @@ function refreshArchives() {
     });
   });
 
-  let currentType = null;
-  let typeIndex = 0;
+  const tableBlocks = getTableBlocks(tablesData, maps);
 
-  for (let i = 0; i < tablesData.length; i++) {
-    const row = tablesData[i];
-    const mapName = row[0];
-    if (!results[mapName]) continue;
+  tableBlocks.forEach(block => {
+    const headerValues = tablesData[block.headerRow - 1] || [];
 
-    for (let j = 2; j < row.length; j++) {
-      if (row[j] === "") break;
-      if (row[j] === "Shroom" || row[j] === "NI") {
-        currentType = row[j];
-        typeIndex = j;
-        break;
-      }
-    }
+    block.mapRows.forEach(mapRow => {
+      const row = tablesData[mapRow.row - 1] || [];
+      const type = mapRow.format;
+      const typeColumn = mapRow.formatColumn || block.formatColumn;
+      if (!results[mapRow.map] || !type || typeColumn === null) return;
 
-    for (let j = 1; j < typeIndex; j++) {
-      const newTime = TIME_TO_MS(row[j]);
-      if (newTime === null) continue;
+      for (let column = block.startColumn + 1; column < typeColumn; column++) {
+        const newTime = TIME_TO_MS(row[column]);
+        if (newTime === null) continue;
 
-      for (let k = i; k >= 0; k--) {
-        const player = tablesData[k][j];
-        if (player === "") break;   
-        if (!playerSet.has(player)) continue;        
+        const player = headerValues[column];
+        if (!playerSet.has(player)) continue;
 
-        if (newTime < results[mapName][player][currentType]) {
-          results[mapName][player][currentType] = newTime;
+        if (newTime < results[mapRow.map][player][type]) {
+          results[mapRow.map][player][type] = newTime;
         }
-        break;
       }
-    }
-  }
+    });
+  });
 
   const archivesSheet = getSheet("Archives");
   const oldAverages = readAveragesFromSheet(archivesSheet, maps);
@@ -134,8 +125,9 @@ function refreshArchives() {
 function fillArchives(results, rankCache) {
   const sheet = getSheet("Archives");
 
-  const values = sheet.getDataRange().getValues();
-  const backgrounds = sheet.getDataRange().getBackgrounds();
+  const range = sheet.getDataRange();
+  const values = range.getValues();
+  const backgrounds = range.getBackgrounds();
   const maps = getMaps();
   const players = getArchivePlayers();
 
@@ -148,7 +140,9 @@ function fillArchives(results, rankCache) {
 
   function fillBlock(type, startIndex, isShroom) {
     for (let i = startIndex; i < startIndex + maps.length; i++) {
-      const map = values[i][1];
+      const map = maps[i - startIndex];
+      values[i][1] = getMapLabel_(map);
+      if (!results[map]) continue;
 
       for (let j = 2; j < players.length + 2; j++) {
         const player = values[0][j];

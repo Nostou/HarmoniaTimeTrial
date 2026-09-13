@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    :root {
+      --blue: #4a86e8;
+      --green: #57bb8a;
+      --red: #e06666;
+      --border: #d9d9d9;
+      --muted: #666;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 16px;
+      color: #222;
+      font-size: 13px;
+    }
+
+    h2 { margin: 0 0 12px; font-size: 18px; }
+    h3 { margin: 16px 0 8px; font-size: 14px; }
+    button, select, input { font: inherit; }
+    button { cursor: pointer; }
+
+    .tabs {
+      display: flex;
+      gap: 4px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 14px;
+    }
+
+    .tab {
+      border: 0;
+      border-radius: 5px 5px 0 0;
+      background: #f1f3f4;
+      padding: 8px 12px;
+    }
+
+    .tab.active {
+      background: var(--blue);
+      color: white;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: end;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    select, input[type="number"] {
+      min-height: 30px;
+      border: 1px solid #b7b7b7;
+      border-radius: 4px;
+      padding: 4px 7px;
+      background: white;
+      color: #222;
+    }
+
+    input[type="number"] { width: 75px; }
+    select.map-select { width: 100%; }
+    select.type-select { width: 98px; }
+
+    .btn {
+      border: 0;
+      border-radius: 5px;
+      padding: 8px 12px;
+      color: white;
+      font-weight: bold;
+    }
+
+    .btn:hover { opacity: .84; }
+    .btn-blue { background: var(--blue); }
+    .btn-green { background: var(--green); }
+    .btn-red { background: var(--red); }
+    .btn-muted { background: #777; }
+    .action-progress { width: 110px; height: 30px; }
+
+    .table-wrap {
+      max-height: 465px;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      background: #f5f5f5;
+      text-align: left;
+      font-size: 11px;
+      color: var(--muted);
+      z-index: 1;
+    }
+
+    th, td { padding: 6px; border-bottom: 1px solid #ededed; }
+    td:first-child { width: 28px; text-align: center; color: var(--muted); }
+    td:last-child { width: 36px; text-align: center; }
+
+    .empty {
+      padding: 20px;
+      border: 1px dashed var(--border);
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .status {
+      min-height: 20px;
+      margin: 10px 0 0;
+      color: var(--muted);
+      white-space: pre-wrap;
+    }
+
+    .status.error { color: #b00020; }
+    .status.success { color: #137333; }
+
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .footer-right { display: flex; gap: 8px; }
+    .hidden { display: none !important; }
+
+    .markdown-preview {
+      min-height: 260px;
+      max-height: 460px;
+      overflow: auto;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      background: #fafafa;
+      white-space: pre-wrap;
+      font: 12px monospace;
+    }
+
+    .markdown-progress {
+      display: flex;
+      justify-content: flex-end;
+      min-height: 30px;
+      margin-bottom: 8px;
+    }
+
+    .hint { color: var(--muted); font-size: 12px; margin: 4px 0 10px; }
+    .nita-label { white-space: nowrap; font-size: 11px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="tabs">
+    <button class="tab active" data-tab="create">Maps</button>
+    <button class="tab" data-tab="markdown">Markdown</button>
+  </div>
+
+  <section id="createView">
+    <div class="toolbar">
+      <label>
+        Mode
+        <select id="modeSelect">
+          <option value="Shroom">Shroom</option>
+          <option value="NI">NI</option>
+          <option value="Custom">Custom</option>
+        </select>
+      </label>
+
+      <label>
+        Count
+        <input id="countInput" type="number" min="1" max="40" value="5">
+      </label>
+
+      <label>
+        Players
+        <input id="playersInput" type="number" min="2" value="5">
+      </label>
+
+      <button id="drawButton" class="btn btn-blue">Draw</button>
+      <progress id="drawProgress" class="action-progress hidden"></progress>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Map</th>
+            <th>Type</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="createRows"></tbody>
+      </table>
+    </div>
+
+    <div class="footer">
+      <button id="addButton" class="btn btn-muted hidden">+ Add a map</button>
+      <div class="footer-right">
+        <button id="createButton" class="btn btn-green">Create</button>
+        <progress id="createProgress" class="action-progress hidden"></progress>
+      </div>
+    </div>
+  </section>
+
+  <section id="markdownView" class="hidden">
+    <div id="markdownProgress" class="markdown-progress hidden">
+      <progress class="action-progress"></progress>
+    </div>
+    <pre id="markdownPreview" class="markdown-preview hidden"></pre>
+    <div id="markdownResultButtons" class="footer hidden">
+      <button id="copyButton" class="btn btn-green">📋 Copy</button>
+    </div>
+  </section>
+
+  <div id="status" class="status"></div>
+
+  <script>
+    const state = {
+      maps: [],
+      createSelection: [],
+      markdownSelection: [],
+      markdownText: "",
+      markdownDirty: true,
+      markdownHeader: null
+    };
+
+    const $ = id => document.getElementById(id);
+
+    function runServer(method, ...args) {
+      return new Promise((resolve, reject) => {
+        const runner = google.script.run
+          .withSuccessHandler(resolve)
+          .withFailureHandler(error => reject(new Error(error.message || String(error))));
+        runner[method](...args);
+      });
+    }
+
+    function setStatus(message, type) {
+      const status = $("status");
+      status.textContent = message || "";
+      status.className = "status" + (type ? " " + type : "");
+    }
+
+    function selectedMode() {
+      return $("modeSelect").value;
+    }
+
+    function isFixedMode() {
+      return selectedMode() !== "Custom";
+    }
+
+    function invalidateMarkdown() {
+      state.markdownDirty = true;
+      state.markdownText = "";
+    }
+
+    function formatMapLabel(map) {
+      return `${map.id} - ${map.name}`;
+    }
+
+    function renderCreateRows() {
+      const body = $("createRows");
+      body.textContent = "";
+
+      state.createSelection.forEach((item, index) => {
+        const row = document.createElement("tr");
+        const numberCell = document.createElement("td");
+        numberCell.textContent = String(index + 1);
+
+        const mapCell = document.createElement("td");
+        const mapSelect = document.createElement("select");
+        mapSelect.className = "map-select";
+        state.maps.forEach(map => {
+          const option = document.createElement("option");
+          option.value = map.id;
+          option.textContent = formatMapLabel(map);
+          mapSelect.appendChild(option);
+        });
+        mapSelect.value = item.map;
+        mapSelect.addEventListener("change", event => {
+          item.map = event.target.value;
+          invalidateMarkdown();
+          updateDuplicateLocks();
+        });
+        mapCell.appendChild(mapSelect);
+
+        const typeCell = document.createElement("td");
+        const typeSelect = document.createElement("select");
+        typeSelect.className = "type-select";
+        ["Shroom", "NI"].forEach(type => {
+          const option = document.createElement("option");
+          option.value = type;
+          option.textContent = type;
+          typeSelect.appendChild(option);
+        });
+        typeSelect.value = item.type;
+        typeSelect.disabled = isFixedMode();
+        typeSelect.addEventListener("change", event => {
+          item.type = event.target.value;
+          invalidateMarkdown();
+        });
+        typeCell.appendChild(typeSelect);
+
+        const actionCell = document.createElement("td");
+        if (!isFixedMode()) {
+          const removeButton = document.createElement("button");
+          removeButton.className = "btn btn-red";
+          removeButton.textContent = "×";
+          removeButton.title = "Remove this map";
+          removeButton.addEventListener("click", () => removeCreateRow(index));
+          actionCell.appendChild(removeButton);
+        }
+
+        row.append(numberCell, mapCell, typeCell, actionCell);
+        body.appendChild(row);
+      });
+
+      $("addButton").classList.toggle("hidden", isFixedMode());
+      $("countInput").disabled = isFixedMode();
+      updateDuplicateLocks();
+    }
+
+    function updateDuplicateLocks() {
+      const selects = [...document.querySelectorAll("#createRows .map-select")];
+      selects.forEach((select, index) => {
+        const usedElsewhere = new Set(
+          state.createSelection
+            .filter((item, itemIndex) => itemIndex !== index)
+            .map(item => item.map)
+        );
+        [...select.options].forEach(option => {
+          option.disabled = usedElsewhere.has(option.value);
+        });
+      });
+    }
+
+    function readCreateSelection() {
+      return state.createSelection.map(item => ({ map: item.map, type: item.type }));
+    }
+
+    async function drawSuggestion() {
+      const mode = selectedMode();
+      const count = mode === "Custom" ? Number($("countInput").value) : 5;
+      const playerCount = Number($("playersInput").value);
+      $("drawProgress").classList.remove("hidden");
+
+      try {
+        const options = await runServer("getCreateTableOptions", mode, count, playerCount);
+        state.maps = options.maps;
+        state.createSelection = options.selection;
+        invalidateMarkdown();
+        $("countInput").min = options.minCount;
+        $("countInput").max = options.maxCount;
+        $("countInput").value = options.count;
+        $("playersInput").min = options.minPlayers;
+        $("playersInput").max = options.maxPlayers;
+        $("playersInput").value = options.playerCount;
+        renderCreateRows();
+        setStatus("");
+      } catch (error) {
+        setStatus(error.message, "error");
+      } finally {
+        $("drawProgress").classList.add("hidden");
+      }
+    }
+
+    function addCreateRow() {
+      const used = new Set(state.createSelection.map(item => item.map));
+      const nextMap = state.maps.find(map => !used.has(map.id));
+      if (!nextMap) {
+        setStatus("All available maps are already selected.", "error");
+        return;
+      }
+
+      state.createSelection.push({ map: nextMap.id, type: "Shroom" });
+      $("countInput").value = state.createSelection.length;
+      renderCreateRows();
+    }
+
+    function removeCreateRow(index) {
+      if (state.createSelection.length <= 1) {
+        setStatus("The table must contain at least one map.", "error");
+        return;
+      }
+
+      state.createSelection.splice(index, 1);
+      $("countInput").value = state.createSelection.length;
+      renderCreateRows();
+    }
+
+    async function createTable() {
+      const selection = readCreateSelection();
+      const mode = selectedMode();
+      const playerCount = Number($("playersInput").value);
+
+      $("createProgress").classList.remove("hidden");
+      setStatus("");
+      try {
+        const result = await runServer("createTable", selection, mode, playerCount, false);
+        setStatus(`Table created in ${result.sheetName}!${result.range}.`, "success");
+      } catch (error) {
+        if (error.message.includes("TARGET_NOT_EMPTY") && confirm(
+          "The target area already contains data. Replace it?"
+        )) {
+          try {
+            const result = await runServer("createTable", selection, mode, playerCount, true);
+            setStatus(`Table created in ${result.sheetName}!${result.range}.`, "success");
+          } catch (retryError) {
+            setStatus(retryError.message, "error");
+          }
+          return;
+        }
+
+        setStatus(error.message.replace("TARGET_NOT_EMPTY: ", ""), "error");
+      } finally {
+        $("createProgress").classList.add("hidden");
+      }
+    }
+
+    function setTab(tabName) {
+      document.querySelectorAll(".tab").forEach(tab => {
+        tab.classList.toggle("active", tab.dataset.tab === tabName);
+      });
+      $("createView").classList.toggle("hidden", tabName !== "create");
+      $("markdownView").classList.toggle("hidden", tabName !== "markdown");
+      if (tabName === "markdown") loadMarkdownSelection();
+    }
+
+    async function loadMarkdownSelection() {
+      $("markdownPreview").classList.add("hidden");
+      $("markdownResultButtons").classList.add("hidden");
+      setStatus("");
+
+      if (!state.markdownDirty && state.markdownText) {
+        showMarkdownResult();
+        return;
+      }
+
+      try {
+        const activeTable = await runServer("getActiveTableSelection");
+        if (activeTable.found) {
+          state.markdownHeader = {
+            number: activeTable.tableNumber,
+            date: activeTable.tableDate
+          };
+          state.markdownSelection = activeTable.selection.map(item => ({
+            map: item.map,
+            type: item.type,
+            nita: item.type === "NI"
+          }));
+          await generateMarkdown();
+          return;
+        }
+
+        if (state.createSelection.length > 0) {
+          state.markdownHeader = null;
+          state.markdownSelection = state.createSelection.map(item => ({
+            map: item.map,
+            type: item.type,
+            nita: item.type === "NI"
+          }));
+          await generateMarkdown();
+          return;
+        }
+
+        setStatus(activeTable.message, "error");
+      } catch (error) {
+        setStatus(error.message, "error");
+      }
+    }
+
+    function showMarkdownResult() {
+      $("markdownPreview").textContent = state.markdownText;
+      $("markdownPreview").classList.remove("hidden");
+      $("markdownResultButtons").classList.remove("hidden");
+    }
+
+    async function generateMarkdown() {
+      const selected = state.markdownSelection.map(item => ({
+        map: item.map,
+        type: item.type,
+        nita: Boolean(item.nita)
+      }));
+
+      if (selected.length === 0) {
+        setStatus("Select at least one track.", "error");
+        return;
+      }
+
+      $("markdownProgress").classList.remove("hidden");
+      setStatus("");
+      try {
+        const markdown = await runServer("CreateTracksMarkdown", selected, [], state.markdownHeader);
+        state.markdownText = markdown;
+        state.markdownDirty = false;
+        showMarkdownResult();
+        setStatus("");
+      } catch (error) {
+        setStatus(error.message, "error");
+      } finally {
+        $("markdownProgress").classList.add("hidden");
+      }
+    }
+
+    async function copyMarkdown() {
+      try {
+        await navigator.clipboard.writeText(state.markdownText);
+      } catch (error) {
+        setStatus("Copy failed. Select the text manually.", "error");
+      }
+    }
+
+    $("modeSelect").addEventListener("change", drawSuggestion);
+    $("drawButton").addEventListener("click", drawSuggestion);
+    $("addButton").addEventListener("click", addCreateRow);
+    $("createButton").addEventListener("click", createTable);
+    $("copyButton").addEventListener("click", copyMarkdown);
+    document.querySelectorAll(".tab").forEach(tab => {
+      tab.addEventListener("click", () => setTab(tab.dataset.tab));
+    });
+
+    drawSuggestion();
+  </script>
+</body>
+</html>

@@ -5,12 +5,6 @@
 // Couleur correspondant à une victoire dans Tables HR
 const COULEUR_VICTOIRE = "#ffe599";
 
-// Blocs dont la distance entre l'en-tête et le Total n'est pas 6
-const EXCEPTIONS_DISTANCE = {
-  77: 4,
-  332: 5
-};
-
 // Table de correspondance rapport temps/WR → rang
 const RANK_TABLE = [
   { rank: "Legend",   value: 1.005 },
@@ -41,14 +35,6 @@ function rapportToRank(rapport) {
   return "Unranked";
 }
 
-function getTotalRows(dataValues) {
-  const totalRows = [];
-  for (let r = 0; r < dataValues.length; r++) {
-    if (dataValues[r][0] === "Total") totalRows.push(r + 1);
-  }
-  return totalRows;
-}
-
 // ----------------------------------------------------------------
 // APPARITIONS, VICTOIRES
 // ----------------------------------------------------------------
@@ -58,20 +44,20 @@ function getApparitionsStats(players, dataValues, dataColors) {
     stats[p] = { apparitions: 0, victoires: 0 };
   });
 
-  const totalRows = getTotalRows(dataValues);
+  const tableBlocks = getTableBlocks(dataValues);
 
-  totalRows.forEach(totalRow => {
-    const distance = EXCEPTIONS_DISTANCE[totalRow] || 6;
-    const headerRow = totalRow - distance;
-    const headerValues = dataValues[headerRow - 1];
+  tableBlocks.forEach(block => {
+    const headerValues = dataValues[block.headerRow - 1] || [];
+    const totalColors = dataColors[block.totalRow - 1] || [];
+    const playerEnd = block.formatColumn || headerValues.length;
 
-    for (let c = 1; c < headerValues.length; c++) {
+    for (let c = block.startColumn + 1; c < playerEnd; c++) {
       const player = headerValues[c];
       if (!player || !stats[player]) continue;
 
       stats[player].apparitions++;
 
-      const color = dataColors[totalRow - 1][c].toLowerCase();
+      const color = String(totalColors[c] || "").toLowerCase();
       if (color === COULEUR_VICTOIRE) {
         stats[player].victoires++;
       }
@@ -205,26 +191,47 @@ function getRangMoyenStats(players, headers, dataShrooms, dataNita, wrShrooms, w
 // FONCTION PRINCIPALE
 // ----------------------------------------------------------------
 function Stats() {
+  clearAllCaches();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const tablesSheet   = ss.getSheetByName("Tables");
   const statsSheet    = ss.getSheetByName("Stats");
   const archivesSheet = ss.getSheetByName("Archives");
   const ranksSheet    = ss.getSheetByName("Ranks");
+  const maps           = getMaps();
+  const archivePlayers = getPlayers();
 
-  const players = statsSheet.getRange("A2:A").getValues()
-    .map(r => r[0]).filter(v => v !== "");
+  const statsLastRow = statsSheet.getLastRow();
+  const players = statsLastRow < 2
+    ? []
+    : statsSheet.getRange(2, 1, statsLastRow - 1, 1)
+      .getValues()
+      .map(r => r[0])
+      .filter(v => v !== "");
 
   const lastRow    = tablesSheet.getLastRow();
   const lastCol    = tablesSheet.getLastColumn();
   const dataValues = tablesSheet.getRange(1, 1, lastRow, lastCol).getValues();
   const dataColors = tablesSheet.getRange(1, 1, lastRow, lastCol).getBackgroundColors();
 
-  const headers     = archivesSheet.getRange("D1:M1").getDisplayValues()[0];
-  const dataShrooms = archivesSheet.getRange("B2:M31").getDisplayValues();
-  const dataNita    = archivesSheet.getRange("B33:M62").getDisplayValues();
+  const headers = archivePlayers.length
+    ? archivesSheet.getRange(1, 4, 1, archivePlayers.length).getDisplayValues()[0]
+    : [];
+  const archiveWidth = archivePlayers.length + 2;
+  const dataShrooms = archivesSheet
+    .getRange(2, 2, maps.length, archiveWidth)
+    .getDisplayValues();
+  const dataNita = archivesSheet
+    .getRange(maps.length + 3, 2, maps.length, archiveWidth)
+    .getDisplayValues();
 
-  const wrShrooms = ranksSheet.getRange("C2:C31").getDisplayValues().map(r => r[0]);
-  const wrNita    = ranksSheet.getRange("C33:C62").getDisplayValues().map(r => r[0]);
+  const wrShrooms = ranksSheet
+    .getRange(2, 3, maps.length, 1)
+    .getDisplayValues()
+    .map(row => row[0]);
+  const wrNita = ranksSheet
+    .getRange(maps.length + 3, 3, maps.length, 1)
+    .getDisplayValues()
+    .map(row => row[0]);
 
   const apparitionsStats = getApparitionsStats(players, dataValues, dataColors);
   const bestTimesStats   = getBestTimesStats(players, headers, dataShrooms, dataNita);
@@ -244,6 +251,6 @@ function Stats() {
     ];
   });
 
-  statsSheet.getRange(2, 2, output.length, 5).setValues(output);
-  Logger.log("Stats calculées pour " + players.length + " joueurs.");
+  if (output.length > 0) statsSheet.getRange(2, 2, output.length, 5).setValues(output);
+  Logger.log("Stats calculated for " + players.length + " players.");
 }

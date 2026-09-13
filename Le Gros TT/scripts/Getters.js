@@ -1,21 +1,84 @@
 let _mapsCache = null;
+let _mapDefinitionsCache = null;
 let _playersCache = null;
+let _tablesCache = null;
+
+const MAP_CATALOG_START_ROW = 7;
+const MAP_CATALOG_START_COLUMN = 1;
+const MAP_CATALOG_WIDTH = 6;
+const TABLE_TEMPLATE_PLAYER_CELL = "I1";
 
 function clearAllCaches() {
   _mapsCache = null;
+  _mapDefinitionsCache = null;
   _playersCache = null;
+  _tablesCache = null;
 }
 
 function getMaps() {
   if (_mapsCache) return _mapsCache;
-  _mapsCache = getDropdownValues("Template", "A2");
+  _mapsCache = getMapDefinitions().map(map => map.id);
   return _mapsCache;
+}
+
+function getMapDefinitions() {
+  if (_mapDefinitionsCache) return _mapDefinitionsCache;
+
+  const sheet = getSheet("Template");
+  const lastRow = sheet.getLastRow();
+  if (lastRow < MAP_CATALOG_START_ROW) return [];
+
+  const values = sheet
+    .getRange(
+      MAP_CATALOG_START_ROW,
+      MAP_CATALOG_START_COLUMN,
+      lastRow - MAP_CATALOG_START_ROW + 1,
+      MAP_CATALOG_WIDTH
+    )
+    .getDisplayValues();
+
+  const seen = new Set();
+  _mapDefinitionsCache = values
+    .map(row => {
+      const id = normalizeMapId_(row[0]);
+      const tag = String(row[1] || "").trim();
+      const name = String(row[2] || "").trim();
+      if (!id) return null;
+      if (seen.has(id)) throw new Error(`Duplicate map ID: ${id}.`);
+
+      seen.add(id);
+      return {
+        id,
+        tag,
+        name,
+        label: `${id} - ${name}`,
+        count: Number(row[3]) || 0,
+        weight: Number(row[4]) || 0,
+        chance: row[5]
+      };
+    })
+    .filter(Boolean);
+
+  return _mapDefinitionsCache;
 }
 
 function getPlayers() {
   if (_playersCache) return _playersCache;
-  _playersCache = getDropdownValues("Template", "B1");
+  _playersCache = getDropdownValues("Template", TABLE_TEMPLATE_PLAYER_CELL);
   return _playersCache;
+}
+
+function normalizeMapId_(value) {
+  const text = String(value === null || value === undefined ? "" : value).trim();
+  const match = text.match(/^(\d{1,2})(?:\s*-\s*|$)/);
+  if (!match) return text;
+  return match[1].padStart(2, "0");
+}
+
+function getMapLabel_(mapId) {
+  const normalizedId = normalizeMapId_(mapId);
+  const definition = getMapDefinitions().find(map => map.id === normalizedId);
+  return definition ? definition.label : String(mapId || "").trim();
 }
 
 function getArchivePlayers() {
@@ -32,7 +95,9 @@ function getDropdownValues(sheetName, inCell) {
   const values = rule.getCriteriaValues()[0];
   if (!Array.isArray(values)) return [];
 
-  return values.filter(v => v !== "-");
+  return [...new Set(values
+    .map(value => String(value).trim())
+    .filter(value => value && value !== "-"))];
 }
 
 function getSheet(sheetName) {
@@ -46,8 +111,9 @@ function getSheetData(sheetName) {
 
 function buildRankCache() {
   const sheet = getSheet("Ranks");
-  const data = sheet.getDataRange().getValues();
-  const backgrounds = sheet.getDataRange().getBackgrounds();
+  const range = sheet.getDataRange();
+  const data = range.getValues();
+  const backgrounds = range.getBackgrounds();
   const maps = getMaps();
 
   const cache = {
@@ -60,11 +126,11 @@ function buildRankCache() {
     const type = isShroom ? "Shroom" : "NI";
 
     for (let i = startIndex; i < startIndex + maps.length; i++) {
-      const mapName = data[i][1];
-      cache[type][mapName] = [];
+      const mapId = normalizeMapId_(data[i][1]);
+      cache[type][mapId] = [];
 
       for (let j = 3; j < 18; j++) {
-        cache[type][mapName].push({
+        cache[type][mapId].push({
           rank: data[0][j],
           time: TIME_TO_MS(data[i][j]),
           color: backgrounds[i][j]
@@ -106,7 +172,7 @@ function getRank(cache, mapName, time, isShroom) {
   const type = isShroom ? "Shroom" : "NI";
   const playerTime = TIME_TO_MS(time);
 
-  const ranks = cache[type][mapName];
+  const ranks = cache[type][normalizeMapId_(mapName)];
   if (!ranks) return null;
 
   for (const r of ranks) {
