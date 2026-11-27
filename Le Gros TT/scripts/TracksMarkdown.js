@@ -15,12 +15,12 @@ function CreateTracksMarkdown(selection, selectedNita, tableInfo) {
   }
 
   const headers = players.length
-    ? sheet.getRange(1, 4, 1, players.length).getDisplayValues()[0]
+    ? sheet.getRange(1, 5, 1, players.length).getDisplayValues()[0]
     : [];
   const dataWidth = players.length + 2;
-  const dataShrooms = sheet.getRange(2, 2, maps.length, dataWidth).getDisplayValues();
+  const dataShrooms = sheet.getRange(2, 3, maps.length, dataWidth).getDisplayValues();
   const dataNita = sheet
-    .getRange(maps.length + 3, 2, maps.length, dataWidth)
+    .getRange(maps.length + 3, 3, maps.length, dataWidth)
     .getDisplayValues();
 
   const shrooms = normalizedSelection.filter(item => !item.nita);

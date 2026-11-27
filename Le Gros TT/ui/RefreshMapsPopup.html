@@ -37,6 +37,7 @@
     }
 
     .hint { margin: 12px 0 18px; color: var(--muted); }
+    .seasons { margin: 0 0 14px; line-height: 1.5; }
     .actions {
       display: flex;
       align-items: center;
@@ -68,6 +69,12 @@
   </style>
 </head>
 <body>
+  <div class="seasons">
+    Saison 1 : 55 tables<br>
+    Saison 2 : 4 tables<br>
+    Saison 3 : Actuelle
+  </div>
+
   <label>
     Tables to ignore from the beginning
     <input id="ignoredTables" type="number" min="0" value="0">
@@ -118,11 +125,8 @@
       setStatus("");
 
       try {
-        const result = await runServer("refreshMapChances", ignoredTables);
-        setStatus(
-          `Map percentages refreshed using ${result.tableCount - result.ignoredTables} table(s).`,
-          "success"
-        );
+        await runServer("refreshMapChances", ignoredTables);
+        google.script.host.close();
       } catch (error) {
         setStatus(error.message, "error");
       } finally {

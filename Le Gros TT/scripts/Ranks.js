@@ -24,7 +24,7 @@ function formatShroomTime(raw) {
 
 function normalizeNIMapName(raw) {
   if (!raw || typeof raw !== "string") return "";
-  return raw.split(/[\/／]/)[0].replace(/\s+/g, " ").trim();
+  return raw.split(/[\/／]/)[0].replace(/\s*\([^()]*\)\s*$/, "").replace(/\s+/g, " ").trim();
 }
 
 function normalizeWRTime(t) {
@@ -71,29 +71,21 @@ function fetchShroomWR() {
 }
 
 function fetchNIWR() {
-  const ss = SpreadsheetApp.openById("1sK4dmfvS2db7grHRsUyFGcUx9UXVN6iV7a-kYlyz4xU");
-  const sheet = ss.getSheets()[0];
-  const data = sheet.getDataRange().getValues();
-
+  const url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRy9H_mG4dlna5tMNoNjAnP9Fk26D0jAA2KFj6ZV37uKvi79sNqUBUrx29jEykMfsoBVLX1WJmLI_SS/pub?gid=0&single=true&output=csv";
+  const data = Utilities.parseCsv(UrlFetchApp.fetch(url).getContentText("UTF-8"));
   const records = [];
 
-  for (let row = 1; row < data.length; row++) {
-    const rawMap = data[row][1]; // colonne B
-    if (!rawMap || typeof rawMap !== "string") continue;
-
-    const map = normalizeNIMapName(rawMap);
-    const wrRow = row + 1;
-    if (!data[wrRow]) continue;
-
-    const timeRaw = data[wrRow][17]; // colonne K
-    const player = data[wrRow][16];   // colonne J
-
-    if (!timeRaw || !player) continue;
-
-    const timeClean = normalizeWRTime(timeRaw.toString());
-    records.push({map, time: timeClean, player: player.toString().trim()});
+  for (let row = 0; row < data.length; row++) {
+    const metaColumn = data[row].findIndex(cell => String(cell).trim() === "Meta Only");
+    if (metaColumn < 0) continue;
+    const map = normalizeNIMapName(data[row][1]);
+    const top = data[row + 1] || [];
+    if (!map || String(top[metaColumn]).trim() !== "1") continue;
+    const time = normalizeWRTime(String(top[metaColumn + 5] || ""));
+    if (time) records.push({ map, time, player: String(top[metaColumn + 4] || "").trim() });
   }
 
+  if (records.length === 0) throw new Error("No NI Meta Only records found in the published leaderboard.");
   return records;
 }
 
@@ -125,8 +117,9 @@ function fillRankTargets() {
   const multipliers = getRankMultipliers();
 
   // Lecture WR + noms des ranks
-  const wrValues = sheet.getRange(2, 3, maps.length * 2 + 1, 1).getValues(); // colonne C
-  const rankHeaders = sheet.getRange(1, 4, 1, 15).getValues()[0]; // D → R
+  const wrValues = sheet.getRange(2, 4, maps.length, 1).getValues()
+    .concat(sheet.getRange(maps.length + 3, 4, maps.length, 1).getValues());
+  const rankHeaders = sheet.getRange(1, 5, 1, 15).getValues()[0];
 
   // Préparer tableau résultat
   const output = [];
@@ -156,16 +149,18 @@ function fillRankTargets() {
 
   // Écriture en une fois
   sheet
-    .getRange(2, 4, output.length, output[0].length)
-    .setValues(output);
+    .getRange(2, 5, maps.length, output[0].length)
+    .setValues(output.slice(0, maps.length));
+  sheet.getRange(maps.length + 3, 5, maps.length, output[0].length)
+    .setValues(output.slice(maps.length));
 
-  const rankPalette = sheet.getRange(2, 4, 1, rankHeaders.length).getBackgrounds()[0];
+  const rankPalette = sheet.getRange(2, 5, 1, rankHeaders.length).getBackgrounds()[0];
   const mapBackgrounds = Array.from({ length: maps.length }, () => rankPalette.slice());
   sheet
-    .getRange(2, 4, maps.length, rankHeaders.length)
+    .getRange(2, 5, maps.length, rankHeaders.length)
     .setBackgrounds(mapBackgrounds);
   sheet
-    .getRange(maps.length + 3, 4, maps.length, rankHeaders.length)
+    .getRange(maps.length + 3, 5, maps.length, rankHeaders.length)
     .setBackgrounds(mapBackgrounds);
 }
 
@@ -173,8 +168,6 @@ function refreshRanks() {
   //if (!assertOwnerOnly()) return;
 
   clearAllCaches();
-  initMaps("Ranks");
-
   const ranks = getSheet("Ranks");
   const mapDefinitions = getMapDefinitions();
   const maps = mapDefinitions.map(map => map.id);
@@ -182,15 +175,20 @@ function refreshRanks() {
   const shroomWR = fetchShroomWR();
   const niWR = fetchNIWR();
 
+  if (ranks.getRange(maps.length + 3, 1).getDisplayValue() !== "NI") {
+    throw new Error("The NI section in Ranks does not match the map count. Adjust the section and Base/DLC labels before refreshing.");
+  }
+  initMaps("Ranks");
+
   const shroomStart = 2;
   const niStart = maps.length + 3;
 
   ranks
-    .getRange(shroomStart, 3, maps.length, 1)
+    .getRange(shroomStart, 4, maps.length, 1)
     .setValues(formatWR(shroomWR, mapDefinitions));
 
   ranks
-    .getRange(niStart, 3, maps.length, 1)
+    .getRange(niStart, 4, maps.length, 1)
     .setValues(formatWR(niWR, mapDefinitions));
 
   fillRankTargets();

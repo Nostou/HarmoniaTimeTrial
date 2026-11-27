@@ -53,7 +53,7 @@ function getMapDefinitions() {
         name,
         label: `${id} - ${name}`,
         count: Number(row[3]) || 0,
-        weight: Number(row[4]) || 0,
+        weight: row[4] === "" ? null : Number(row[4]) || 0,
         chance: row[5]
       };
     })
@@ -116,6 +116,13 @@ function buildRankCache() {
   const backgrounds = range.getBackgrounds();
   const maps = getMaps();
 
+  for (let i = 0; i < maps.length; i++) {
+    if (normalizeMapId_((data[i + 1] || [])[2]) !== maps[i] ||
+        normalizeMapId_((data[i + maps.length + 2] || [])[2]) !== maps[i]) {
+      throw new Error("The map list in Ranks is out of date. Run Custom > Refresh Ranks first.");
+    }
+  }
+
   const cache = {
     Shroom: {},
     NI: {}
@@ -126,10 +133,10 @@ function buildRankCache() {
     const type = isShroom ? "Shroom" : "NI";
 
     for (let i = startIndex; i < startIndex + maps.length; i++) {
-      const mapId = normalizeMapId_(data[i][1]);
+      const mapId = normalizeMapId_(data[i][2]);
       cache[type][mapId] = [];
 
-      for (let j = 3; j < 18; j++) {
+      for (let j = 4; j < 19; j++) {
         cache[type][mapId].push({
           rank: data[0][j],
           time: TIME_TO_MS(data[i][j]),
@@ -186,7 +193,7 @@ function getRank(cache, mapName, time, isShroom) {
 
 function getRankMultipliers() {
   const sheet = getSheet("Ranks");
-  const data = sheet.getRange("T2:U17").getValues();
+  const data = sheet.getRange("U2:V17").getValues();
 
   const multipliers = {};
   data.forEach(([rank, value]) => {

@@ -5,29 +5,14 @@ function readAveragesFromSheet(sheet, maps) {
     averages[m] = { Shroom: null, NI: null };
   });
 
-  // --- SHROOM
-  const shroomRange = sheet
-    .getRange(2, 3, maps.length, 1)
-    .getDisplayValues();
-
-  shroomRange.forEach((row, i) => {
-    const v = TIME_TO_MS(row[0]);
-    if (v !== null) {
-      averages[maps[i]].Shroom = v;
-    }
-  });
-
-  // --- NI
-  const niStartRow = maps.length + 3;
-  const niRange = sheet
-    .getRange(niStartRow, 3, maps.length, 1)
-    .getDisplayValues();
-
-  niRange.forEach((row, i) => {
-    const v = TIME_TO_MS(row[0]);
-    if (v !== null) {
-      averages[maps[i]].NI = v;
-    }
+  const seen = new Set();
+  sheet.getRange(2, 3, sheet.getLastRow() - 1, 2).getDisplayValues().forEach(row => {
+    const map = normalizeMapId_(row[0]);
+    if (!averages[map]) return;
+    const type = seen.has(map) ? "NI" : "Shroom";
+    seen.add(map);
+    const value = TIME_TO_MS(row[1]);
+    if (value !== null) averages[map][type] = value;
   });
 
   return averages;

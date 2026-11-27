@@ -8,7 +8,7 @@ const CREATE_TABLE_DEFAULT_PLAYER_COUNT = 5;
 const CREATE_TABLE_MIN_PLAYER_COUNT = 2;
 const CREATE_TABLE_FORMATS = ["Shroom", "NI"];
 // Change this value when the oldest tables should no longer affect weighting.
-const DEFAULT_IGNORED_TABLES_FOR_MAP_CHANCES = 55;
+const DEFAULT_IGNORED_TABLES_FOR_MAP_CHANCES = 59;
 
 const TABLE_TEMPLATE_HEADER_ROW = 1;
 const TABLE_TEMPLATE_SHROOM_ROW = 2;
@@ -586,7 +586,10 @@ function getLastFormatForMap(map, history) {
 }
 
 function getWeightedMaps() {
-  return getMapDefinitions()
+  const definitions = getMapDefinitions();
+  const defaultWeight = Math.max(1, ...definitions.map(map => map.weight || 0));
+  return definitions
+    .map(map => ({ ...map, weight: map.weight === null ? defaultWeight : map.weight }))
     .filter(map => map.weight > 0)
     .map(map => ({
       map: map.id,
@@ -739,7 +742,7 @@ function testNI() {
 function openRefreshMapChances() {
   const html = HtmlService.createHtmlOutputFromFile("ui/RefreshMapsPopup")
     .setWidth(420)
-    .setHeight(260);
+    .setHeight(330);
   SpreadsheetApp.getUi().showModalDialog(html, "Refresh Maps %");
 }
 

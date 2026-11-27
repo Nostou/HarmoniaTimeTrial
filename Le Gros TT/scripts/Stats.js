@@ -35,6 +35,21 @@ function rapportToRank(rapport) {
   return "Unranked";
 }
 
+function removeLegacyRankColors_(sheet) {
+  const legacy = new Set(["Iron", "Bronze", "Silver", "Gold", "Platinum", "Emerald"]);
+  const rules = sheet.getConditionalFormatRules();
+  const remaining = rules.filter(rule => {
+    const ranges = rule.getRanges();
+    const condition = rule.getBooleanCondition();
+    if (ranges.length !== 1 || !condition) return true;
+    const range = ranges[0];
+    return !(range.getA1Notation() === "F2:F10" &&
+      condition.getCriteriaType() === SpreadsheetApp.BooleanCriteria.TEXT_CONTAINS &&
+      legacy.has(String(condition.getCriteriaValues()[0])));
+  });
+  if (remaining.length !== rules.length) sheet.setConditionalFormatRules(remaining);
+}
+
 // ----------------------------------------------------------------
 // APPARITIONS, VICTOIRES
 // ----------------------------------------------------------------
@@ -68,7 +83,7 @@ function getApparitionsStats(players, dataValues, dataColors) {
 }
 
 // ----------------------------------------------------------------
-// MAPS JOUÉES (séparées Shroom / Nita)
+// MAPS JOUÉES (Shroom et NI comptent séparément)
 // ----------------------------------------------------------------
 function getNBPlayedTracks(players, headers, dataShrooms, dataNita) {
   const mapsJouees = {};
@@ -77,23 +92,13 @@ function getNBPlayedTracks(players, headers, dataShrooms, dataNita) {
     const colIndex = headers.indexOf(player);
 
     if (colIndex === -1) {
-      mapsJouees[player] = "0 - 0";
+      mapsJouees[player] = `0/${dataShrooms.length + dataNita.length}`;
       return;
     }
 
-    function compterTirets(data) {
-      let nbTirets = 0;
-      data.forEach(row => {
-        const valeur = row[2 + colIndex].toString().split("\n")[0].trim();
-        if (valeur === "-") nbTirets++;
-      });
-      return nbTirets;
-    }
-
-    const shroomJouees = dataShrooms.length - compterTirets(dataShrooms);
-    const nitaJouees    = dataNita.length - compterTirets(dataNita);
-
-    mapsJouees[player] = `${shroomJouees} - ${nitaJouees}`;
+    const played = [...dataShrooms, ...dataNita]
+      .filter(row => TIME_TO_MS(row[2 + colIndex]) !== null).length;
+    mapsJouees[player] = `${played}/${dataShrooms.length + dataNita.length}`;
   });
 
   return mapsJouees;
@@ -139,7 +144,7 @@ function getBestTimesStats(players, headers, dataShrooms, dataNita) {
 
   const bestTimes = {};
   players.forEach(p => {
-    bestTimes[p] = `${bestTimesShroom[p]} - ${bestTimesNita[p]}`;
+    bestTimes[p] = bestTimesShroom[p] + bestTimesNita[p];
   });
 
   return bestTimes;
@@ -198,38 +203,40 @@ function Stats() {
   const archivesSheet = ss.getSheetByName("Archives");
   const ranksSheet    = ss.getSheetByName("Ranks");
   const maps           = getMaps();
-  const archivePlayers = getPlayers();
-
+  const players = getPlayers();
   const statsLastRow = statsSheet.getLastRow();
-  const players = statsLastRow < 2
-    ? []
-    : statsSheet.getRange(2, 1, statsLastRow - 1, 1)
-      .getValues()
-      .map(r => r[0])
-      .filter(v => v !== "");
 
   const lastRow    = tablesSheet.getLastRow();
   const lastCol    = tablesSheet.getLastColumn();
   const dataValues = tablesSheet.getRange(1, 1, lastRow, lastCol).getValues();
   const dataColors = tablesSheet.getRange(1, 1, lastRow, lastCol).getBackgroundColors();
 
-  const headers = archivePlayers.length
-    ? archivesSheet.getRange(1, 4, 1, archivePlayers.length).getDisplayValues()[0]
+  const headers = players.length
+    ? archivesSheet.getRange(1, 5, 1, players.length).getDisplayValues()[0]
     : [];
-  const archiveWidth = archivePlayers.length + 2;
+  if (players.some((player, index) => headers[index] !== player)) {
+    throw new Error("The player list in Archives is out of date. Run Custom > Refresh Archives first.");
+  }
+  const archiveWidth = players.length + 2;
   const dataShrooms = archivesSheet
-    .getRange(2, 2, maps.length, archiveWidth)
+    .getRange(2, 3, maps.length, archiveWidth)
     .getDisplayValues();
   const dataNita = archivesSheet
-    .getRange(maps.length + 3, 2, maps.length, archiveWidth)
+    .getRange(maps.length + 3, 3, maps.length, archiveWidth)
     .getDisplayValues();
 
+  if (maps.some((map, index) => normalizeMapId_(dataShrooms[index][0]) !== map ||
+      normalizeMapId_(dataNita[index][0]) !== map)) {
+    throw new Error("The map list in Archives is out of date. Run Custom > Refresh Archives first.");
+  }
+  buildRankCache();
+
   const wrShrooms = ranksSheet
-    .getRange(2, 3, maps.length, 1)
+    .getRange(2, 4, maps.length, 1)
     .getDisplayValues()
     .map(row => row[0]);
   const wrNita = ranksSheet
-    .getRange(maps.length + 3, 3, maps.length, 1)
+    .getRange(maps.length + 3, 4, maps.length, 1)
     .getDisplayValues()
     .map(row => row[0]);
 
@@ -237,12 +244,17 @@ function Stats() {
   const bestTimesStats   = getBestTimesStats(players, headers, dataShrooms, dataNita);
   const nbTracksPlayed   = getNBPlayedTracks(players, headers, dataShrooms, dataNita);
   const rangMoyenStats   = getRangMoyenStats(players, headers, dataShrooms, dataNita, wrShrooms, wrNita);
+  const paletteRange = ranksSheet.getRange("U3:U17");
+  const rankNames = paletteRange.getDisplayValues();
+  const rankColors = paletteRange.getBackgrounds();
+  const colorsByRank = new Map(rankNames.map((row, i) => [row[0], rankColors[i][0]]));
 
   const pct = (val, total) => total > 0 ? Math.round(val / total * 100) : 0;
 
   const output = players.map(p => {
     const a = apparitionsStats[p];
     return [
+      p,
       a.apparitions,
       `${a.victoires} (${pct(a.victoires, a.apparitions)}%)`,
       nbTracksPlayed[p],
@@ -251,6 +263,17 @@ function Stats() {
     ];
   });
 
-  if (output.length > 0) statsSheet.getRange(2, 2, output.length, 5).setValues(output);
+  const neededRows = players.length + 1;
+  if (neededRows > statsSheet.getMaxRows()) statsSheet.insertRowsAfter(statsSheet.getMaxRows(), neededRows - statsSheet.getMaxRows());
+  if (statsLastRow > 1) statsSheet.getRange(2, 1, statsLastRow - 1, 6).clearContent();
+  removeLegacyRankColors_(statsSheet);
+  if (statsLastRow > 1) statsSheet.getRange(2, 6, statsLastRow - 1, 1).setBackground("#ffffff");
+  statsSheet.getRange(1, 4, 1, 2).setValues([["Track Progress", "Records"]]);
+  if (output.length > 0) {
+    statsSheet.getRange(2, 4, output.length, 1).setNumberFormat("@");
+    statsSheet.getRange(2, 1, output.length, 6).setValues(output);
+    statsSheet.getRange(2, 6, output.length, 1)
+      .setBackgrounds(players.map(player => [colorsByRank.get(rangMoyenStats[player]) || "#ffffff"]));
+  }
   Logger.log("Stats calculated for " + players.length + " players.");
 }
